@@ -1,0 +1,27 @@
+# .NET
+bin/
+obj/
+*.user
+*.vs/
+*.vscode/
+*.dotCover
+*.ncrunch*
+TestResults/
+*.coverage
+*.nupkg
+
+# Visual Studio
+.vs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Rider
+.idea/
+
+# Logs
+*.log

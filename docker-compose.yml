@@ -1,0 +1,14 @@
+﻿version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ecommerce-api:latest
+    ports:
+      - "7004:80"                      # Host 7004 → Container 80
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      # (Kestrel’i Program.cs üzerinden ListenAnyIP(80) ile ayarladık, ASPNETCORE_URLS
+      # artık zorunlu değil ama isterseniz ekleyebilirsiniz)
