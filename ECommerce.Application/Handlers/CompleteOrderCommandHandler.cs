@@ -1,39 +1,52 @@
 ﻿using ECommerce.Application.Commands;
+using ECommerce.Application.DTOs;
 using ECommerce.Application.Interfaces;
 using MediatR;
 
 namespace ECommerce.Application.Handlers
 {
-    public class CompleteOrderCommandHandler : IRequestHandler<CompleteOrderCommand, bool>
+    /// <summary>
+    /// CompleteOrderCommand için MediatR handler’ı.
+    /// </summary>
+    public class CompleteOrderCommandHandler
+        : IRequestHandler<CompleteOrderCommand, CompleteResponseEnvelope>
     {
         private readonly IBalanceManagementService _balanceService;
-        private readonly IOrderRepository _orderRepo;
+        private readonly IOrderRepository _orderRepository;
 
         public CompleteOrderCommandHandler(
             IBalanceManagementService balanceService,
-            IOrderRepository orderRepo)
+            IOrderRepository orderRepository)
         {
             _balanceService = balanceService;
-            _orderRepo = orderRepo;
+            _orderRepository = orderRepository;
         }
 
-        public async Task<bool> Handle(CompleteOrderCommand cmd, CancellationToken ct)
+        public async Task<CompleteResponseEnvelope> Handle(
+            CompleteOrderCommand request,
+            CancellationToken cancellationToken)
         {
-            // 1) Siparişi DB’den al
-            var order = await _orderRepo.GetByIdAsync(cmd.OrderId)
-                        ?? throw new KeyNotFoundException($"Order {cmd.OrderId} bulunamadı.");
+            // 1) Siparişi DB'den al
+            var order = await _orderRepository.GetByIdAsync(request.OrderId);
+            if (order == null)
+                throw new ApplicationException(
+                    $"Order with ID '{request.OrderId}' not found.");
 
-            // 2) Ödeme tamamlama çağrısını reservationId ile yap
-            bool success = await _balanceService.CompleteOrderAsync(order.ReservationId);
-            if (!success)
+            // 2) Balance Management servisinde tamamlama isteği
+            var completed = await _balanceService.CompleteOrderAsync(request.OrderId);
+            if (!completed)
                 throw new ApplicationException("Ödeme tamamlama başarısız.");
 
-            // 3) Durumu güncelle ve kaydet
+            // 3) Sipariş durumunu güncelle
             order.Status = "Completed";
-            await _orderRepo.UpdateAsync(order);
+            await _orderRepository.UpdateAsync(order);
 
-            return true;
+            // 4) Başarılı sonuç zarfı dön
+            return new CompleteResponseEnvelope
+            {
+                OrderId = order.Id,
+                Success = true
+            };
         }
-
     }
 }

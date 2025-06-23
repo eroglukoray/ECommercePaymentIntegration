@@ -18,6 +18,7 @@ using CorrelationId;
 using CorrelationId.DependencyInjection;
 using Prometheus;
 using Serilog;
+using ECommerce.Application.Mapping;
 
 
 
@@ -36,15 +37,15 @@ builder.Services.AddDefaultCorrelationId(options =>
     options.UpdateTraceIdentifier = true;               // HttpContext.TraceIdentifier’ı da ayarla
     // options.IgnoreRequestHeader = false;               // istersen config’e ekle
 });
+
 //  MemoryCache
 builder.Services.AddMemoryCache();
 
 // EF Core In-Memory
 builder.Services.AddDbContext<ApplicationDbContext>(opts =>
     opts.UseInMemoryDatabase("EcomDb"));
-
+builder.Services.AddAutoMapper(typeof(MappingProfile).Assembly);
 // Polly politikalarını tanımla
-
 // Timeout: 10 sn içinde dönmezse TimeoutRejectedException
 var timeoutPolicy = Policy.TimeoutAsync<HttpResponseMessage>(
     TimeSpan.FromSeconds(10),
@@ -112,7 +113,6 @@ var fallbackPolicy = Policy<HttpResponseMessage>
 var policyWrap = Policy.WrapAsync(fallbackPolicy, retryPolicy, circuitBreakerPolicy, timeoutPolicy);
 
 // HttpClient + Polly
-
 builder.Services
     .AddHttpClient<IBalanceManagementService, BalanceManagementService>(c =>
     {
@@ -123,14 +123,14 @@ builder.Services
             ? Policy.NoOpAsync<HttpResponseMessage>()
             : policyWrap);
 
-
 // DI & MediatR & Repository
 builder.Services.AddScoped<IOrderRepository, OrderRepository>();
+builder.Services.AddScoped<IIdempotencyRepository, IdempotencyRepository>();
 builder.Services.AddMediatR(typeof(CreateOrderCommand).Assembly);
 
 // Controllers + FluentValidation
-
 builder.Services.AddControllers();
+
 // FluentValidation otomatik valide ve client-side adapter’ları ekle
 builder.Services
     .AddFluentValidationAutoValidation()
@@ -142,7 +142,7 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 builder.WebHost
-    .ConfigureKestrel(opts => opts.ListenAnyIP(80));
+    .ConfigureKestrel(opts => opts.ListenAnyIP(7004));
 
 //  HealthChecks kayıtları
 builder.Services.AddHealthChecks()
@@ -151,37 +151,33 @@ builder.Services.AddHealthChecks()
     // Dış servisi kontrol eden custom santé check
     .AddCheck<BalanceServiceHealthCheck>("Balance-Service");
 
-
 var app = builder.Build();
 app.UseCorrelationId();
-app.UseSerilogRequestLogging();   // veya kendi logging middleware’in
+app.UseSerilogRequestLogging();   
+// veya kendi logging middleware’in
 // **Health-Checks endpoint’leri** 
-
 app.UseRouting();
 
 //  HTTP metrics middleware
-app.UseHttpMetrics();      // otomatik olarak _in-flight_, duration, status code metrikleri toplar
+app.UseHttpMetrics();
 
+// otomatik olarak _in-flight_, duration, status code metrikleri toplar
 app.UseEndpoints(endpoints =>
 {
     endpoints.MapControllers();
+
     // 2) /metrics endpoint’ini expose et
     endpoints.MapMetrics();
 });
-
 app.UseAuthorization();
 
 //  Middleware pipeline
-
 app.UseDeveloperExceptionPage();
 app.UseSwagger();
 app.UseSwaggerUI();
+
 //  app.UseHttpsRedirection();
-
-
 app.Run();
-
-
 // Partial Program, integration test için
 namespace ECommerce.API
 {

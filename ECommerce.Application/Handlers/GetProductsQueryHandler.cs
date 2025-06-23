@@ -1,4 +1,5 @@
-﻿using ECommerce.Application.DTOs;
+﻿using AutoMapper;
+using ECommerce.Application.DTOs;
 using ECommerce.Application.Interfaces;
 using ECommerce.Application.Queries;
 using MediatR;
@@ -9,23 +10,18 @@ namespace ECommerce.Application.Handlers
     public class GetProductsQueryHandler
          : IRequestHandler<GetProductsQuery, List<ProductDto>>
     {
-        private readonly IBalanceManagementService _balanceService;
-
-        public GetProductsQueryHandler(IBalanceManagementService balanceService)
+        private readonly IBalanceManagementService _balanceSvc;
+        private readonly IMapper _mapper;
+        public GetProductsQueryHandler(
+            IBalanceManagementService svc, IMapper mapper)
         {
-            _balanceService = balanceService;
+            _balanceSvc = svc; _mapper = mapper;
         }
 
-        public async Task<List<ProductDto>> Handle(
-            GetProductsQuery request,
-            CancellationToken cancellationToken)
+        public async Task<List<ProductDto>> Handle(GetProductsQuery q, CancellationToken ct)
         {
-            // 1) Dış servisten 'success + data' envelope okundu,
-            //    IBalanceManagementService zaten sadece List<ProductDto> döndürüyor.
-            var products = await _balanceService.GetProductsAsync();
-
-            // 2) Ek iş mantığı yoksa doğrudan dönüyoruz.
-            return products;
+            var products = await _balanceSvc.GetProductsAsync();
+            return _mapper.Map<List<ProductDto>>(products);
         }
     }
 }

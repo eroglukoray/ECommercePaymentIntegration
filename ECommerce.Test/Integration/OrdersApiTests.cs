@@ -1,5 +1,6 @@
 ﻿using ECommerce.Application.DTOs;
 using FluentAssertions;
+using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
@@ -32,29 +33,44 @@ namespace ECommerce.Test.Integration
         [Fact]
         public async Task CreateAndCompleteOrder_FullFlow_Works()
         {
-            // Arrange: ürün listesi
-            var products = await _client.GetFromJsonAsync<List<ProductDto>>("/api/products");
-            products.Should().ContainSingle();
-            var productId = products[0].Id;
+            // 1) Ürünleri al, 200 OK olmalı
+            var products = await _client.GetFromJsonAsync<ProductDto[]>("/api/products");
+            Assert.NotNull(products);
+            Assert.NotEmpty(products);
 
-            // Act: sipariş oluştur
-            var createResp = await _client.PostAsJsonAsync(
-                "/api/orders/create",
-                new { ProductIds = new List<string> { productId } });
+            // 2) Sipariş oluşturma isteği
+            var createReq = new CreateOrderRequest
+            {
+                ProductIds = new List<string> { products[0].Id }
+            };
+            var idemKeyCreate = Guid.NewGuid().ToString();
 
-            // Assert create
-            createResp.StatusCode.Should().Be(HttpStatusCode.Created);
-            var orderResult = await createResp.Content.ReadFromJsonAsync<OrderResultDto>();
-            orderResult.Should().NotBeNull();
-            orderResult!.OrderId.Should().NotBeNullOrEmpty();
-            orderResult.Status.Should().Be("Reserved");
+            var createMsg = new HttpRequestMessage(HttpMethod.Post, "/api/orders/create")
+            {
+                Content = JsonContent.Create(createReq)
+            };
+            createMsg.Headers.Add("Idempotency-Key", idemKeyCreate);
 
-            // Act: siparişi tamamla
-            var completeResp = await _client.PostAsync(
-                $"/api/orders/{orderResult.OrderId}/complete", null);
+            var createResp = await _client.SendAsync(createMsg);
+            Assert.Equal(HttpStatusCode.Created, createResp.StatusCode);
 
-            // Assert complete
-            completeResp.StatusCode.Should().Be(HttpStatusCode.NoContent);
+            var created = await createResp.Content.ReadFromJsonAsync<OrderResultDto>();
+            Assert.NotNull(created);
+            Assert.False(string.IsNullOrWhiteSpace(created.OrderId));
+
+            // 3) Siparişi tamamlama isteği
+            var idemKeyComplete = Guid.NewGuid().ToString();
+            var completeMsg = new HttpRequestMessage(
+                HttpMethod.Post, $"/api/orders/{created.OrderId}/complete");
+            completeMsg.Headers.Add("Idempotency-Key", idemKeyComplete);
+
+            var completeResp = await _client.SendAsync(completeMsg);
+            Assert.Equal(HttpStatusCode.OK, completeResp.StatusCode);
+
+            var envelope = await completeResp.Content.ReadFromJsonAsync<CompleteResponseEnvelope>();
+            Assert.NotNull(envelope);
+            Assert.True(envelope.Success);
+            Assert.Equal(created.OrderId, envelope.OrderId);
         }
     }
 

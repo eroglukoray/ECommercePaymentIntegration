@@ -3,7 +3,6 @@ using ECommerce.Application.DTOs;
 using ECommerce.Application.Interfaces;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using System.Collections.Generic;
