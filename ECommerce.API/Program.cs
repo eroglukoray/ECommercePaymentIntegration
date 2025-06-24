@@ -19,10 +19,12 @@ using CorrelationId.DependencyInjection;
 using Prometheus;
 using Serilog;
 using ECommerce.Application.Mapping;
+using ECommerce.API.Middlewares;
 
 
 
 var builder = WebApplication.CreateBuilder(args);
+
 // Serilog konfigürasyonu
 builder.Host.UseSerilog((ctx, lc) => lc
     .Enrich.FromLogContext()
@@ -113,16 +115,16 @@ var fallbackPolicy = Policy<HttpResponseMessage>
 var policyWrap = Policy.WrapAsync(fallbackPolicy, retryPolicy, circuitBreakerPolicy, timeoutPolicy);
 
 // HttpClient + Polly
+var balanceBaseUrl = builder.Configuration["BalanceApi:BaseUrl"];
 builder.Services
     .AddHttpClient<IBalanceManagementService, BalanceManagementService>(c =>
     {
-        c.BaseAddress = new Uri("https://balance-management-pi44.onrender.com");
+        c.BaseAddress = new Uri(balanceBaseUrl);
     })
-    .AddPolicyHandler(request =>
-        request.Method == HttpMethod.Get
-            ? Policy.NoOpAsync<HttpResponseMessage>()
-            : policyWrap);
-
+    .AddTransientHttpErrorPolicy(p =>
+        p.WaitAndRetryAsync(3, retry => TimeSpan.FromSeconds(Math.Pow(2, retry))))
+    .AddTransientHttpErrorPolicy(p =>
+        p.CircuitBreakerAsync(5, TimeSpan.FromSeconds(30)));
 // DI & MediatR & Repository
 builder.Services.AddScoped<IOrderRepository, OrderRepository>();
 builder.Services.AddScoped<IIdempotencyRepository, IdempotencyRepository>();
@@ -143,6 +145,23 @@ builder.Services.AddSwaggerGen();
 
 builder.WebHost
     .ConfigureKestrel(opts => opts.ListenAnyIP(7004));
+//  Kestrel’i config’den oku ——————————————————————
+//builder.WebHost.ConfigureKestrel((context, options) =>
+//{
+//    // HTTP endpoint
+//    var httpUrl = context.Configuration["Kestrel:Endpoints:Http:Url"]!;
+//    var httpUri = new Uri(httpUrl);
+//    options.Listen(IPAddress.Any, httpUri.Port);
+
+//    // HTTPS endpoint (eğer sertifika mount ettiyseniz)
+//    var httpsUrl = context.Configuration["Kestrel:Endpoints:Https:Url"];
+//    if (!string.IsNullOrEmpty(httpsUrl))
+//    {
+//        var httpsUri = new Uri(httpsUrl);
+//        options.Listen(IPAddress.Any, httpsUri.Port, listenOpts =>
+//            listenOpts.UseHttps());
+//    }
+//});
 
 //  HealthChecks kayıtları
 builder.Services.AddHealthChecks()
@@ -152,6 +171,7 @@ builder.Services.AddHealthChecks()
     .AddCheck<BalanceServiceHealthCheck>("Balance-Service");
 
 var app = builder.Build();
+app.UseGlobalExceptionHandler();
 app.UseCorrelationId();
 app.UseSerilogRequestLogging();   
 // veya kendi logging middleware’in

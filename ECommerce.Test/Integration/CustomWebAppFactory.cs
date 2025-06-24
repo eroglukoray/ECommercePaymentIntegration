@@ -15,6 +15,7 @@ namespace ECommerce.Test.Integration
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
+            builder.UseEnvironment("IntegrationTests");
             builder.ConfigureServices(services =>
             {
                 // Mevcut IBalanceManagementService kaydını kaldır
